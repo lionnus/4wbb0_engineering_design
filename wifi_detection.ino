@@ -15,7 +15,8 @@
   double currTime=millis();
   double prevTimeConnected=0;
   double prevTime=0;
-  int prevConnectionState=0;
+  int prevConnectionState=WL_CONNECTED;
+  int currConnectionState=WL_CONNECTED;
   double timeConnected=0;
 //  Setup variables for data storage
 
@@ -42,7 +43,8 @@ void setup() {
 
 void loop() {
   currTime=millis();
-   timeClient.update();
+  currConnectionState=WiFi.status();
+  timeClient.update();
    /* 
   String formattedTime = timeClient.getFormattedTime();
   Serial.print("Formatted Time: ");
@@ -57,21 +59,29 @@ void loop() {
   Serial.println(currentMinute); 
   */
   // Check for wifi connection status
-  if ((WiFi.status() == WL_NO_SSID_AVAIL)&&(prevConnectionState==WL_CONNECTED)) {
+  if ((currConnectionState == WL_NO_SSID_AVAIL)&&(prevConnectionState==WL_CONNECTED)) {
 	prevTimeConnected=currTime;
   prevConnectionState=WL_NO_SSID_AVAIL;
   timeConnected=0;
+  Serial.printf("Disconnected since %d s after boot\n",round(currTime/1000));
   }
-  else if (WiFi.status() == WL_CONNECTED) {
-        prevConnectionState=WL_CONNECTED;
+  if (currConnectionState == WL_CONNECTED) {
+      if (prevConnectionState==WL_NO_SSID_AVAIL){
+          timeConnected=currTime;
+          prevConnectionState=WL_CONNECTED;
+          Serial.printf("Reconnected at %d s after boot\n",round(currTime/1000));
+  }
         prevTimeConnected=0;
-        }
-  if ((WiFi.status() == WL_CONNECTED)&&(prevConnectionState==WL_NO_SSID_AVAIL)){
-    timeConnected=currTime;
+        if (currTime>prevTime+2000){
+          int tempTime = (currTime-timeConnected)/1000;
+          Serial.printf("Connected for %d s.\n",round(tempTime));
+            prevTime=currTime;
   }
-  
-  if (currTime>prevTime+2000){
-  Serial.println("Connected for ");Serial.println((currTime-timeConnected)/1000);Serial.println("sec.");
-  prevTime=currTime;
+  }
+  if (currConnectionState == WL_NO_SSID_AVAIL) {
+        if (currTime>prevTime+2000){
+            Serial.printf("Disconnected for %d s\n",round((currTime-prevTimeConnected)/1000));
+            prevTime=currTime;
+  }
   }
 }
