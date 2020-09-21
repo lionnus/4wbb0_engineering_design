@@ -19,7 +19,11 @@
   int currConnectionState=WL_CONNECTED;
   double timeConnected=0;
 //  Setup variables for data storage
-
+struct data {
+  int weekNumber;        //Save the number of the week
+  int useHour[7][24];   //For every day of week and every hour of week save the hourly time spend outside in minutes
+  int totTime;          //Total time in minutes that user has spend outside in the week
+}week1;
 
 void setup() {
    Serial.begin(115200);
