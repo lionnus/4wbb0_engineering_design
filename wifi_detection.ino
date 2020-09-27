@@ -1,7 +1,7 @@
-#include <ESP8266WiFi.h>
+#include <SPI.h>
+#include <WiFiNINA.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
-//#include <ESP8266WebServer.h>
 
 
 // Setup variables for wifi connection
@@ -18,6 +18,10 @@
   int prevConnectionState=WL_CONNECTED;
   int currConnectionState=WL_CONNECTED;
   double timeConnected=0;
+
+  //Initiliaze Wifi client library
+  WiFiClient client;
+  
 //  Setup variables for data storage
 struct data {
   int weekNumber;        //Save the number of the week
@@ -29,16 +33,16 @@ void setup() {
    Serial.begin(115200);
   // Setup wifi
    WiFi.begin(ssid, password);
-  Serial.print("Connecting");
+  Serial.print("Attempting to connect to SSID: ");
+  Serial.println(ssid);
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
     Serial.print(".");
   }
   Serial.println();
-
-  Serial.print("Connected, IP address: ");
-  Serial.println(WiFi.localIP());
+  //WiFi is connected, print it's status
+  printWifiStatus();
   // Setup NTP
     timeClient.begin();
   // Set offset time in seconds to adjust for timezone, which is GMT +2 in the Netherlands
@@ -67,25 +71,46 @@ void loop() {
 	prevTimeConnected=currTime;
   prevConnectionState=WL_NO_SSID_AVAIL;
   timeConnected=0;
-  Serial.printf("Disconnected since %d s after boot\n",round(currTime/1000));
+  Serial.print("Disconnected since ");
+  Serial.println(round(currTime/1000));
   }
   if (currConnectionState == WL_CONNECTED) {
-      if (prevConnectionState==WL_NO_SSID_AVAIL){
+      if (prevConnectionState!=WL_CONNECTED){
           timeConnected=currTime;
           prevConnectionState=WL_CONNECTED;
-          Serial.printf("Reconnected at %d s after boot\n",round(currTime/1000));
+          Serial.print("Reconnected at ");
+          Serial.println(round(currTime/1000));
   }
         prevTimeConnected=0;
         if (currTime>prevTime+2000){
           int tempTime = (currTime-timeConnected)/1000;
-          Serial.printf("Connected for %d s.\n",round(tempTime));
+          Serial.print("Connected for ");
+          Serial.println(round(tempTime));
             prevTime=currTime;
   }
   }
-  if (currConnectionState == WL_NO_SSID_AVAIL) {
+  if (currConnectionState != WL_CONNECTED) {
         if (currTime>prevTime+2000){
-            Serial.printf("Disconnected for %d s\n",round((currTime-prevTimeConnected)/1000));
+            Serial.print("Disconnected for ");
+            Serial.println(round((currTime-prevTimeConnected)/1000));
             prevTime=currTime;
   }
   }
+}
+
+void printWifiStatus() {
+  // print the SSID of the network you're attached to:
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+
+  // print your board's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+
+  // print the received signal strength:
+  long rssi = WiFi.RSSI();
+  Serial.print("signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
 }
