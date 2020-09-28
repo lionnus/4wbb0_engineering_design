@@ -1,15 +1,30 @@
+/*Credits:
+- to solara70 on Instructables for SMS service code: https://www.instructables.com/id/How-to-Send-SMS-Text-Messages-From-Your-Arduino-ES/
+- to various Github users for various code for the wifi connection
+*/
+
 #include <SPI.h>
 #include <WiFiNINA.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
-
+#include "secrets.h"
 
 // Setup variables for wifi connection
-  const char *ssid = "Lionnus";
-  const char *password = "hannahisdom";
+  const char *ssid = SECRET_SSID;
+  const char *password = SECRET_PASS;
+   
 // Define NTP Client to get time
   WiFiUDP ntpUDP;
   NTPClient timeClient(ntpUDP, "pool.ntp.org");
+
+//Setup variables for SMS service
+const char _sKapow_Host[] ="kapow.co.uk";
+const int  _iKapow_Port =80;
+
+// SMS Service User Account Details:
+const char _sKapow_User[]     = SECRET_SMS_USER;
+const char _sKapow_Password[] = SECRET_SMS_PASS;  
+char _sKapow_Mobile[]="0031646527480";  //For now my personal phone number
 
 //  Setup variables for on-board time management
   double currTime=millis();
@@ -67,35 +82,46 @@ void loop() {
   Serial.println(currentMinute); 
   */
   // Check for wifi connection status
-  if ((currConnectionState == WL_NO_SSID_AVAIL)&&(prevConnectionState==WL_CONNECTED)) {
-	prevTimeConnected=currTime;
-  prevConnectionState=WL_NO_SSID_AVAIL;
-  timeConnected=0;
-  Serial.print("Disconnected since ");
-  Serial.println(round(currTime/1000));
+  if ((currConnectionState != WL_CONNECTED)&&(prevConnectionState==WL_CONNECTED)) {
+	    prevTimeConnected=currTime;
+      prevConnectionState=WL_NO_SSID_AVAIL;
+      timeConnected=0;
+      Serial.print("Disconnected since ");
+      Serial.print(round(currTime/1000));
+      Serial.println(" ms after boot.");
   }
   if (currConnectionState == WL_CONNECTED) {
       if (prevConnectionState!=WL_CONNECTED){
           timeConnected=currTime;
           prevConnectionState=WL_CONNECTED;
           Serial.print("Reconnected at ");
-          Serial.println(round(currTime/1000));
+          Serial.print(round(currTime/1000));
+          Serial.println(" ms after boot.");
   }
         prevTimeConnected=0;
         if (currTime>prevTime+2000){
           int tempTime = (currTime-timeConnected)/1000;
           Serial.print("Connected for ");
-          Serial.println(round(tempTime));
+          Serial.print(round(tempTime));
+          Serial.println(" ms.");
             prevTime=currTime;
   }
   }
   if (currConnectionState != WL_CONNECTED) {
         if (currTime>prevTime+2000){
             Serial.print("Disconnected for ");
-            Serial.println(round((currTime-prevTimeConnected)/1000));
+            Serial.print(round((currTime-prevTimeConnected)/1000));
+            Serial.println(" ms.");
             prevTime=currTime;
   }
+  reconnectWifi();
   }
+}
+
+void reconnectWifi() {
+  WiFi.disconnect();
+  WiFi.end();
+  WiFi.begin(ssid,password);
 }
 
 void printWifiStatus() {
@@ -113,4 +139,73 @@ void printWifiStatus() {
   Serial.print("signal strength (RSSI):");
   Serial.print(rssi);
   Serial.println(" dBm");
+}
+
+bool SendSmsKapow(char* sMobile, char* sMessage)
+{
+  WiFiClient clientSms;
+
+  int iAttempts=0;
+  int iMaxAttempts=10;
+  Serial.print("Connecting to KAPOW host");
+  while (!clientSms.connect(_sKapow_Host, _iKapow_Port)) {
+    Serial.print(".");
+    iAttempts++;
+    if (iAttempts > iMaxAttempts) {
+      Serial.println("\nFailed to Connect to KAPOW");
+      return true;
+    }
+    delay(1000);
+  }
+  Serial.println("\nConnected to KAPOW");
+  delay(1000);
+
+  Serial.println("Sending HTTP request to KAPOW:");
+
+  //An example GET request would be:
+  //http://www.kapow.co.uk/scripts/sendsms.php?username=test&password=test&mobile=07777123456&sms=Test+message
+
+  char sHttp[500]= "";
+  strcat(sHttp, "GET /scripts/sendsms.php?username=");
+  strcat(sHttp, _sKapow_User);
+  strcat(sHttp, "&password=");
+  strcat(sHttp, _sKapow_Password);
+  strcat(sHttp, "&mobile=");
+  strcat(sHttp, sMobile);
+  strcat(sHttp, "&sms=");
+  strcat(sHttp, sMessage);
+  strcat(sHttp, "&returnid=TRUE\n\n");
+    
+  Serial.println(sHttp);
+  clientSms.print(sHttp);
+
+  Serial.println("Waiting for response (10 secs)...");
+  delay(10 * 1000);
+  
+  char  sReply[100] = "";
+  int   iPos = 0;
+
+  while (clientSms.available()) {
+    char c = clientSms.read();
+    Serial.print(c);
+    sReply[iPos] = c;
+    iPos++;
+    if (iPos == 99) break;
+  }
+  sReply[iPos] = '\0';
+
+  // check if reply contains OK
+  bool bResult = (strstr(sReply, "OK") != NULL);
+
+  if (bResult)
+    Serial.println("\nSMS: Succesfully sent");
+  else
+    Serial.println("\nSMS: Failed to Send");
+
+  if (!clientSms.connected()) {
+    Serial.println("Disconnecting from KAPOW");
+    clientSms.stop();
+  }
+
+  return bResult;
 }
