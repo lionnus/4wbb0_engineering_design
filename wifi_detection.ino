@@ -50,9 +50,11 @@ int storageWeek[7][24]={0}; //total time per hour that user spend outside in min
 
 void setup() {
    Serial.begin(115200);
-   Serial.println("OUTDOOR \n\n4WBB0 Engineering Design\n\n");
+   pinMode(LED_BUILTIN,OUTPUT);
+   digitalWrite(LED_BUILTIN,LOW);
   // Setup wifi
    WiFi.begin(ssid, password);
+  Serial.println("OUTDOOR \n\n4WBB0 Engineering Design\n\n");
   Serial.print("Attempting to connect to SSID: ");
   Serial.println(ssid);
   while (WiFi.status() != WL_CONNECTED)
@@ -60,6 +62,7 @@ void setup() {
     delay(500);
     Serial.print(".");
   }
+     digitalWrite(LED_BUILTIN,HIGH);
   //Set time 
   currTime=millis();
   //Prepare storage array
@@ -79,6 +82,8 @@ void setup() {
   timeClient.setTimeOffset(7200);
   //Get Epoch time and set it to the RTC
   while(!WiFi.getTime());
+     digitalWrite(LED_BUILTIN,LOW);
+     delay(500);
    rtc.setEpoch(WiFi.getTime());
    startTime=((rtc.getHours()+GMT)*3600+rtc.getMinutes()*60+rtc.getSeconds())*1000;
 }
@@ -115,6 +120,7 @@ void loop() {
       Serial.print(rtc.getHours()+GMT);Serial.print(":");Serial.print(rtc.getMinutes());Serial.print(":");Serial.println(rtc.getSeconds());
   }
   if (currConnectionState == WL_CONNECTED) {
+       digitalWrite(LED_BUILTIN,HIGH);
       if (prevConnectionState!=WL_CONNECTED){
           timeConnected=currTime;
           prevConnectionState=WL_CONNECTED;
@@ -134,6 +140,7 @@ void loop() {
   }
   }
   if (currConnectionState != WL_CONNECTED) {
+       digitalWrite(LED_BUILTIN,LOW);
         if (currTime>prevTime+30000){
             Serial.print("Disconnected for ");
             Serial.print(round((currTime-prevTimeConnected)/1000));
