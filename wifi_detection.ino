@@ -92,7 +92,18 @@ void setup() {
   //Setup time variables for code
    startTime=((rtc.getHours()+GMT)*3600+rtc.getMinutes()*60+rtc.getSeconds())*1000;
    sprintf(dataString,"users/1/times/%02d-%02d-20%02d",rtc.getDay(), rtc.getMonth(), rtc.getYear());
-   outdoorTime=Firebase.getInt(firebaseData,dataString);
+   //Retrieve value of outdoorTime for this date
+     if (Firebase.getInt(firebaseData, dataString)) {
+    //Success, then read the payload value
+    //Make sure payload value returned from server is integer
+    if (firebaseData.dataType() == "int")) {
+      outdoorTime = firebaseData.intData();
+    }
+  } else {
+    //Failed to get outdoorTime print error detail
+    Serial.println(firebaseData.errorReason());
+  }
+   Serial.print("Retrieved current outdoorTime: "); Serial.println(outdoorTime);
    digitalWrite(LED_BUILTIN,LOW);
    delay(500);
   prevTimeConnected=millis();
