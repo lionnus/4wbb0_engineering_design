@@ -96,7 +96,7 @@ void setup() {
      if (Firebase.getInt(firebaseData, dataString)) {
     //Success, then read the payload value
     //Make sure payload value returned from server is integer
-    if (firebaseData.dataType() == "int")) {
+    if (firebaseData.dataType() == "int") {
       outdoorTime = firebaseData.intData();
     }
   } else {
