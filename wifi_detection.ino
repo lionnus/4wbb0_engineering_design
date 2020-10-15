@@ -6,6 +6,9 @@
 #include "Firebase_Arduino_WiFiNINA.h"
 #include <RTCZero.h>  // include the library
 #include "secrets.h"
+//Setup defined values
+#define RECONDELAY 10000 
+#define RECONTRYDELAY 10000
 
 // Setup variables for wifi connection
   const char *ssid = SECRET_SSID;
@@ -16,11 +19,8 @@
   #define GMT 2          //set timezone, for NL this is GMT +2
   //Setup Firebase database
   FirebaseData firebaseData;
-  char currDate[11] = "";
-  char userString[] = "users/1/times/01/date";
-  char dataString[] = "users/1/times/01/duration";
-  int  entryNr=3;
-  bool ledState = 0;
+  char currDate[] = "01-01-1970";
+  char dataString[] = "users/1/times/01-01-1970";
 
 /*//Setup variables for SMS service
 const char _sKapow_Host[] ="kapow.co.uk";
@@ -37,7 +37,7 @@ char _sKapow_Mobile[]="0031646527480";  //For now my personal phone number*/
   unsigned long int prevTime=0;
   unsigned long int timeConnected=0;
   unsigned long int startTime=0;
-  unsigned long int outsideTime=0;
+  unsigned long int outdoorTime=0;
   int day=1;
   int hour=1;
   int prevHour=0;
@@ -58,7 +58,7 @@ void setup() {
   while(WiFi.begin(ssid,password)!=WL_CONNECTED);
   Serial.println("WiFi connected, connecting to Firebase...");
   Firebase.begin(SECRET_FIREBASE_PROJECT,SECRET_FIREBASE_CODE,ssid,password);
-  Serial.println("Connceted to Firebase \n\nOUTDOOR \n\n4WBB0 Engineering Design\n\n");
+  Serial.println("Connected to Firebase \n\nOUTDOOR \n\n4WBB0 Engineering Design\n\n");
   {
     delay(500);
     Serial.print(".");
@@ -74,8 +74,6 @@ void setup() {
       storageWeek[d][h]=-1;
     }
   }
-    sprintf(userString,"users/1/times/%01d/date",entryNr);
-    sprintf(dataString,"users/1/times/%01d/duration",entryNr);
   Serial.println();
   //WiFi is connected, print it's status
   printWifiStatus();
@@ -88,13 +86,18 @@ void setup() {
    digitalWrite(LED_BUILTIN,HIGH);
    delay(200);
   }
+  Serial.println("Got WiFi time");
   //Sync RTC with NTP
   rtc.setEpoch(WiFi.getTime()+GMT*60);
   //Setup time variables for code
    startTime=((rtc.getHours()+GMT)*3600+rtc.getMinutes()*60+rtc.getSeconds())*1000;
-   sprintf(currDate, "%02d-%02d-20%02d",rtc.getDay(), rtc.getMonth(), rtc.getYear());
+   sprintf(dataString,"users/1/times/%02d-%02d-20%02d",rtc.getDay(), rtc.getMonth(), rtc.getYear());
+   outdoorTime=Firebase.getInt(firebaseData,dataString);
    digitalWrite(LED_BUILTIN,LOW);
    delay(500);
+  prevTimeConnected=millis();
+   //Optimize power usage
+   WiFi.lowPowerMode();
   }
 
 void loop() {
@@ -108,14 +111,19 @@ void loop() {
   }
   if (hour==24&&prevHour<24) {
     day++;
+    if (day%2) rtc.setEpoch(WiFi.getTime()+GMT*2);
     prevHour=0;
-    entryNr++;
-    sprintf(userString,"users/1/times/%01d/date",entryNr);
-    sprintf(dataString,"users/1/times/%01d/duration",entryNr);
-    sprintf(currDate, "%02d-%02d-20%02d",rtc.getDay(), rtc.getMonth(), rtc.getYear());
+    if (WiFi.status()==WL_CONNECTED){
+      uploadData();
+      outdoorTime=0;  //time user spend outside back to 0 mins
+    }
+    else {
+      //what to do if wifi not available at midnight?
+    }
+    sprintf(dataString,"users/1/times/%02d-%02d-20%02d",rtc.getDay(), rtc.getMonth(), rtc.getYear());
   }
   if (day==8){
-    uploadData();
+    //uploadData();
     resetStorage();
   }
   currConnectionState=WiFi.status();
@@ -140,10 +148,12 @@ void loop() {
           Serial.print("Reconnected at ");
           Serial.print(round(currTime/1000));
           Serial.println(" s after boot.");
-          //Update outsideTime
-          outsideTime+=round((currTime-prevTimeConnected/1000/60));
+          //Update time tracking vars
+          outdoorTime+=round((currTime-prevTimeConnected)/1000/60);
           totalTimeLastHour+=round((currTime-prevTimeConnected)/1000/60);
-          Serial.print("Total time outside: "); Serial.println(totalTimeLastHour);
+          //Store data to Firebase
+          uploadData();
+          Serial.print("Total time outside: "); Serial.println(outdoorTime);
   }
         prevTimeConnected=0;
         if (currTime>prevTime+10000){
@@ -156,11 +166,12 @@ void loop() {
   }
   if (currConnectionState != WL_CONNECTED) {
        digitalWrite(LED_BUILTIN,LOW);
-        if (currTime>prevTime+10000){
+       //Deep sleep for 1 minute?
+        if (currTime>prevTime+RECONDELAY){
             Serial.print("Disconnected for ");
             Serial.print(round((currTime-prevTimeConnected)/1000));
             Serial.println(" s.");
-            if(!reconnectWifi()) ;    //try to reconnect every 30 seconds
+            reconnectWifi();    //try to reconnect every RECONDELAY ms
             prevTime=currTime;
   }
   }
@@ -169,8 +180,11 @@ int reconnectWifi(void) {
   WiFi.disconnect();
   WiFi.end();
   WiFi.begin(ssid,password);
-  delay(10000);
-  if(WiFi.status()==WL_CONNECTED) return 1;
+  delay(RECONTRYDELAY);
+  if(WiFi.status()==WL_CONNECTED) {
+    WiFi.lowPowerMode();
+    return 1;
+  }
   else {
     WiFi.end();
     return 0;
@@ -208,7 +222,10 @@ void printStorage(){
     Serial.println();
   }
 }
-void uploadData(){}
+void uploadData(){
+     Firebase.setInt(firebaseData,dataString, outdoorTime);
+     Serial.println("Data stored to firebase");
+  }
 void resetStorage(){}
 /*bool SendSmsKapow(char* sMobile, char* sMessage)
 {
