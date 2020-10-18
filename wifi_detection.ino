@@ -1,35 +1,30 @@
-/*Credits:
-- to solara70 on Instructables for SMS service code: https://www.instructables.com/id/How-to-Send-SMS-Text-Messages-From-Your-Arduino-ES/
-- to various Github users for various code for the wifi connection
-*/
+///////////////////////////////////////////
+// 4WBB0 Engineering Design
+//
+// Arduino code for the Outdoor device, a device that tracks the time spend outside.
+// Written for the Arduino Nano 33 IoT board, a low-power Arduino board with interated WiFi chip.
+//
+// Code written by Lionnus Kesting with help of various libraries and online repositories.
+///////////////////////////////////////////
 
 #include "Firebase_Arduino_WiFiNINA.h"
 #include <RTCZero.h>  // include the library
 #include "secrets.h"
 //Setup defined values
-#define RECONDELAY 10000 
-#define RECONTRYDELAY 10000
+#define RECONDELAY 10000 //Delay for how long WiFi doesn't try to reconnect, bigger for less power consumption
+#define RECONTRYDELAY 10000 //Delay for how long WiFi is trying to reconnect, shorter for less power consumption
 
-// Setup variables for wifi connection
+// Setup variables for wifi connection, retrieved from secrets.h or from non-volatile storage by using FlashStorage.h
   const char *ssid = SECRET_SSID;
-  const char *password = SECRET_PASS;
+  const char *password = SECRET_PASS; 
    
-// Define NTP Client and RTC library to get time
+// Define RTC to get time
   RTCZero rtc;           // make an instance of the library
   #define GMT 2          //set timezone, for NL this is GMT +2
-  //Setup Firebase database
+  //Setup Firebase database variables
   FirebaseData firebaseData;
-  char currDate[] = "01-01-1970";
-  char dataString[] = "users/1/times/01-01-1970";
-
-/*//Setup variables for SMS service
-const char _sKapow_Host[] ="kapow.co.uk";
-const int  _iKapow_Port =80;
-
-// SMS Service User Account Details:
-const char _sKapow_User[]     = SECRET_SMS_USER;
-const char _sKapow_Password[] = SECRET_SMS_PASS;  
-char _sKapow_Mobile[]="0031646527480";  //For now my personal phone number*/
+  char currDate[] = "01-01-1970";   //string for date formatting
+  char dataString[] = "users/1/times/01-01-1970"; //strin for Firebase variable location formatting
 
 //  Setup variables for on-board time management
   unsigned long int currTime=0;
@@ -42,7 +37,7 @@ char _sKapow_Mobile[]="0031646527480";  //For now my personal phone number*/
   int hour=1;
   int prevHour=0;
   int totalTimeLastHour=0; //time for which device was connected to wifi in minutes the last hour
-  int prevConnectionState=WL_CONNECTED;
+  int prevConnectionState=WL_CONNECTED; //previous state of the WiFi to detect a change and upload to Firebase
   int currConnectionState=WL_CONNECTED;
   
 //  Setup variables for data storage of last week
@@ -52,7 +47,7 @@ void setup() {
    Serial.begin(115200);
    pinMode(LED_BUILTIN,OUTPUT);
    digitalWrite(LED_BUILTIN,LOW);
-  // Setup wifi
+  // Setup WiFi connection
     Serial.print("Attempting to connect to SSID: ");
   Serial.println(ssid);
   while(WiFi.begin(ssid,password)!=WL_CONNECTED);
@@ -64,7 +59,7 @@ void setup() {
     Serial.print(".");
   }
      digitalWrite(LED_BUILTIN,HIGH);
-  //Set local time 
+  //Set precise local time management
   currTime=millis();
   prevTime=currTime;
   
@@ -94,13 +89,12 @@ void setup() {
    sprintf(dataString,"users/1/times/%02d-%02d-20%02d",rtc.getDay(), rtc.getMonth(), rtc.getYear());
    //Retrieve value of outdoorTime for this date
      if (Firebase.getInt(firebaseData, dataString)) {
-    //Success, then read the payload value
-    //Make sure payload value returned from server is integer
+    //Success, then read the retrieved int value
     if (firebaseData.dataType() == "int") {
       outdoorTime = firebaseData.intData();
     }
   } else {
-    //Failed to get outdoorTime print error detail
+    //Failed to get outdoorTime, print error detail
     Serial.println(firebaseData.errorReason());
   }
    Serial.print("Retrieved current outdoorTime: "); Serial.println(outdoorTime);
@@ -115,32 +109,36 @@ void loop() {
   currTime=millis();
   
   int currHour=(rtc.getHours()+GMT);
+  //Store outsideTime locally in the 2D array
   if (hour!=currHour){
     storeTime();
     prevHour=hour;
     hour=currHour;
   }
+  //Check if it is past midnight and if a new day has started
   if (hour==24&&prevHour<24) {
     day++;
     if (day%2) rtc.setEpoch(WiFi.getTime()+GMT*2);
     prevHour=0;
     if (WiFi.status()==WL_CONNECTED){
-      uploadData();
+      uploadData();    //upload data of previous day if not yet uploaded
       outdoorTime=0;  //time user spend outside back to 0 mins
     }
     else {
-      //what to do if wifi not available at midnight?
+      //what to do if wifi not available at midnight
     }
+    //Update the path to which data is stored with the new date
     sprintf(dataString,"users/1/times/%02d-%02d-20%02d",rtc.getDay(), rtc.getMonth(), rtc.getYear());
   }
+  //Reset local 2D storage array after a week
   if (day==8){
     //uploadData();
     resetStorage();
   }
+  //Check the status of the WiFi
   currConnectionState=WiFi.status();
-  //printStorage();
 
-  // Check for wifi connection status
+  // Decide what to do with this new WiFi status
   if ((currConnectionState != WL_CONNECTED)&&(prevConnectionState==WL_CONNECTED)) {
 	    prevTimeConnected=currTime;
       prevConnectionState=WL_NO_SSID_AVAIL;
@@ -162,7 +160,7 @@ void loop() {
           //Update time tracking vars
           outdoorTime+=round((currTime-prevTimeConnected)/1000/60);
           totalTimeLastHour+=round((currTime-prevTimeConnected)/1000/60);
-          //Store data to Firebase
+          //Store new data to Firebase
           uploadData();
           Serial.print("Total time outside: "); Serial.println(outdoorTime);
   }
@@ -177,8 +175,8 @@ void loop() {
   }
   if (currConnectionState != WL_CONNECTED) {
        digitalWrite(LED_BUILTIN,LOW);
-       //Deep sleep for 1 minute?
-        if (currTime>prevTime+RECONDELAY){
+       //For optimal power usage: deep sleep for specified amount of time here
+        if (currTime>prevTime+RECONDELAY){ //Only try to reconnect every RECONDELAY ms.
             Serial.print("Disconnected for ");
             Serial.print(round((currTime-prevTimeConnected)/1000));
             Serial.println(" s.");
@@ -187,6 +185,7 @@ void loop() {
   }
   }
 }
+//Code which is used to check if the WiFi is available again
 int reconnectWifi(void) {
   WiFi.disconnect();
   WiFi.end();
@@ -203,11 +202,11 @@ int reconnectWifi(void) {
   }
 }
 void printWifiStatus() {
-  // print the SSID of the network you're attached to:
+  // print the SSID of the network the device is attached to
   Serial.print("SSID: ");
   Serial.println(WiFi.SSID());
 
-  // print your board's IP address:
+  // print the IP address:
   IPAddress ip = WiFi.localIP();
   Serial.print("IP Address: ");
   Serial.println(ip);
@@ -218,12 +217,14 @@ void printWifiStatus() {
   Serial.print(rssi);
   Serial.println(" dBm");
 }
+//Function to store the time locally in the 2D array
 void storeTime(void){
   if (storageWeek[day][hour-1]==-1){
    storageWeek[day][hour-1]=totalTimeLastHour;
    totalTimeLastHour=0;
   }
 }
+//Function to print the 2D array 
 void printStorage(){
   for (int d=0;d<=6;d++){
     Serial.print("Day ");Serial.print(d);
@@ -233,77 +234,16 @@ void printStorage(){
     Serial.println();
   }
 }
+//Code to upload the data to Firebase
 void uploadData(){
      Firebase.setInt(firebaseData,dataString, outdoorTime);
      Serial.println("Data stored to firebase");
   }
-void resetStorage(){}
-/*bool SendSmsKapow(char* sMobile, char* sMessage)
-{
-  WiFiClient clientSms;
-
-  int iAttempts=0;
-  int iMaxAttempts=10;
-  Serial.print("Connecting to KAPOW host");
-  while (!clientSms.connect(_sKapow_Host, _iKapow_Port)) {
-
-    Serial.print(".");
-    iAttempts++;
-    if (iAttempts > iMaxAttempts) {
-      Serial.println("\nFailed to Connect to KAPOW");
-      return true;
+  //Function to reset the 2D array at the end of the week
+void resetStorage(){
+    for (int d=0;d<=6;d++){
+    for(int h=0;h<=23;h++){
+      storageWeek[d][h]=-1;
     }
-    delay(1000);
   }
-  Serial.println("\nConnected to KAPOW");
-  delay(1000);
-
-  Serial.println("Sending HTTP request to KAPOW:");
-
-  //An example GET request would be:
-  //http://www.kapow.co.uk/scripts/sendsms.php?username=test&password=test&mobile=07777123456&sms=Test+message
-
-  char sHttp[500]= "";
-  strcat(sHttp, "GET /scripts/sendsms.php?username=");
-  strcat(sHttp, _sKapow_User);
-  strcat(sHttp, "&password=");
-  strcat(sHttp, _sKapow_Password);
-  strcat(sHttp, "&mobile=");
-  strcat(sHttp, sMobile);
-  strcat(sHttp, "&sms=");
-  strcat(sHttp, sMessage);
-  strcat(sHttp, "&returnid=TRUE\n\n");
-    
-  Serial.println(sHttp);
-  clientSms.print(sHttp);
-
-  Serial.println("Waiting for response (10 secs)...");
-  delay(10 * 1000);
-  
-  char  sReply[100] = "";
-  int   iPos = 0;
-
-  while (clientSms.available()) {
-    char c = clientSms.read();
-    Serial.print(c);
-    sReply[iPos] = c;
-    iPos++;
-    if (iPos == 99) break;
   }
-  sReply[iPos] = '\0';
-
-  // check if reply contains OK
-  bool bResult = (strstr(sReply, "OK") != NULL);
-
-  if (bResult)
-    Serial.println("\nSMS: Succesfully sent");
-  else
-    Serial.println("\nSMS: Failed to Send");
-
-  if (!clientSms.connected()) {
-    Serial.println("Disconnecting from KAPOW");
-    clientSms.stop();
-  }
-
-  return bResult;
-}*/
