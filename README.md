@@ -1,4 +1,4 @@
-# Outdoor Time Tracker
+# Keychain WiFi Tracker
 
 **Outdoor** is a device designed to track the time spent outside by elderly people. It's built on the Arduino Nano 33 IoT board, a low-power Arduino board with an integrated WiFi chip. The Arduino is integrated in a keychain with a rechargeable battery. A charging station has also been developed and an accompanying Android app to track the gathered data was developed separately.
 
